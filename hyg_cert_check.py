@@ -5,6 +5,8 @@ import io
 import requests
 import pyexcel_ods3
 
+CERT_LIST_COL_IDX_FS_ID = 1
+
 def penny_or_rewe(store):
     """Function to check if a store is 'penny' or 'rewe' based on the name"""
     name_lower = store['name'].lower()
@@ -16,14 +18,17 @@ def login(email, password):
     data = {"email": email, "password": password, "remember_me": 'True'}
     response = session.post('https://foodsharing.de/api/user/login', json=data)
 
-    if 200 == response.status_code:
-        user = session.get('https://foodsharing.de/api/user/current/details').json()
-        firstname = user['firstname']
-        lastname = user['lastname']
-        fsid = user['id']
-        print(f'Logged in as: {firstname} {lastname} ({fsid})')
+    if response.ok:
+        response = session.get('https://foodsharing.de/api/user/current/details')
+
+        if response.ok:
+            user = response.json()
+            print(f"Logged in as: {user['firstname']} {user['lastname']} ({user['id']})")
+        else:
+            print("Logged in as: failed to get user data")
     else:
-        print('Login failed - verify username and password')
+        print('Error: Login failed - verify username and password')
+        sys.exit(1)
 
     return session
 
@@ -31,27 +36,37 @@ def get_cert_list(session, password):
     """Function to get the hygiene certificate list"""
     headers = { 'X-Requested-With': 'XMLHttpRequest', }
     response = session.get('https://cloud.foodsharing.network/public.php/webdav',
-                        headers=headers,
-                        auth=('i3k4cks9P9WirYR', password))
+                           headers=headers,
+                           auth=('i3k4cks9P9WirYR', password))
+
+    if not response.ok:
+        print('Error: Failed to get certificate list - verify file password')
+        sys.exit(1)
 
     file = pyexcel_ods3.get_data(io.BytesIO(response.content))
 
-    list_cert = []
+    cert_list = []
     table = file['Tabelle1']
     header = table[0]
 
+    #pyexcel removes empty entries at the end, this created a list with a defined column count
     for row in table[1:]:
         cert_list_entry = ['' for _ in range(len(header))]
         for i, value in enumerate(row):
             cert_list_entry[i] = value
-        list_cert.append(cert_list_entry)
+        cert_list.append(cert_list_entry)
 
-    return header, list_cert
+    return header, cert_list
 
 def get_store_list(session):
     """Function to get the penny or rewe stores managed by the logged in foodsharing user"""
-    stores = session.get('https://foodsharing.de/api/user/current/stores').json()
+    response = session.get('https://foodsharing.de/api/user/current/stores')
 
+    if not response.ok:
+        print('Error: Failed to get your stores - please try again')
+        sys.exit(1)
+
+    stores = response.json()
     stores_managed = [store for store in stores if 'isManaging' in store and store['isManaging']]
     stores_managed_certificate = [store for store in stores_managed if penny_or_rewe(store)]
 
@@ -59,26 +74,22 @@ def get_store_list(session):
 
 def get_active_member(session, store_id):
     """Function to get the active members of a store"""
-    store_members = session.get(f'https://foodsharing.de/api/stores/{store_id}/member').json()
-
     store_members_active = []
-    for store_member in store_members:
-        if store_member['team_active'] == 1:
-            store_members_active.append(store_member)
+
+    response = session.get(f'https://foodsharing.de/api/stores/{store_id}/member')
+
+    if response.ok:
+        store_members = response.json()
+        for store_member in store_members:
+            if store_member['team_active'] == 1:
+                store_members_active.append(store_member)
+    else:
+        print('Error: Failed to get the list of members  - please try again')
 
     return store_members_active
 
-def main():
-    """Main function"""
-    session = login(sys.argv[1], sys.argv[2])
-    header, cert_list = get_cert_list(session, sys.argv[3])
-    store_list = get_store_list(session)
-
-    if 0 == len(store_list):
-        print('Oh, it looks like you do not manage stores like '
-              'Penny or Rewe that require hygiene certificates.')
-        return
-
+def check_cert(session, header, cert_list, store_list):
+    """Function to check the certificate for all active FS in the handed over store list"""
     check_column_title = header[len(header) - 1]
     print(f'Certificates checked for: {check_column_title}\n')
 
@@ -96,8 +107,8 @@ def main():
             #compare active foodsaver with certificate list by id
             for cert in cert_list:
 
-                #clearn fsid from cerificate list from special characters
-                fsid = cert[1]
+                #clean fsid in cerificate list from special characters
+                fsid = cert[CERT_LIST_COL_IDX_FS_ID]
                 if not isinstance(fsid, int):
                     fsid = ''.join(e for e in fsid if e.isalnum())
                     if fsid != '':
@@ -118,7 +129,20 @@ def main():
 
         print('\n')
 
-    print('Keep in mind, this only checks Pennys and Rewes you manage')
+    print('Keep in mind, this checks Penny and Rewe stores you manage only')
+
+def main():
+    """Main function"""
+    session = login(sys.argv[1], sys.argv[2])
+    header, cert_list = get_cert_list(session, sys.argv[3])
+    store_list = get_store_list(session)
+
+    if 0 == len(store_list):
+        print('Oh, it looks like you do not manage stores (Penny '
+              'or Rewe) which require hygiene certificates.')
+        sys.exit(1)
+
+    check_cert(session, header, cert_list, store_list)
 
 if __name__ == "__main__":
     main()
