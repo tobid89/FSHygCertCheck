@@ -2,10 +2,27 @@
 
 import sys
 import io
+import argparse
 import requests
 import pyexcel_ods3
 
 CERT_LIST_COL_IDX_FS_ID = 1
+
+def get_args():
+    """Function to initialize argparse"""
+    parser = argparse.ArgumentParser(description='Hygiene Certificate Checker')
+
+    parser.add_argument('email', type=str,
+                        help='Login email for your foodsharing account')
+    parser.add_argument('login_password', type=str,
+                        help='Login password for your foodsharing account')
+    parser.add_argument('file_password', type=str,
+                        help='Password for the hygiene certificate list')
+    parser.add_argument('-V', '--version', action='version', version='%(prog)s 1.0',
+                        help='Display version information')
+
+    return parser.parse_args()
+
 
 def penny_or_rewe(store):
     """Function to check if a store is 'penny' or 'rewe' based on the name"""
@@ -133,8 +150,10 @@ def check_cert(session, header, cert_list, store_list):
 
 def main():
     """Main function"""
-    session = login(sys.argv[1], sys.argv[2])
-    header, cert_list = get_cert_list(session, sys.argv[3])
+    args = get_args()
+
+    session = login(args.email, args.login_password)
+    header, cert_list = get_cert_list(session, args.file_password)
     store_list = get_store_list(session)
 
     if 0 == len(store_list):
