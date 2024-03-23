@@ -45,7 +45,7 @@ def login(email, password):
             print("Logged in as: failed to get user data")
     else:
         print('Error: Login failed - verify username and password')
-        sys.exit(1)
+        end_script()
 
     return session
 
@@ -58,7 +58,7 @@ def get_cert_list(session, password):
 
     if not response.ok:
         print('Error: Failed to get certificate list - verify file password')
-        sys.exit(1)
+        end_script()
 
     file = pyexcel_ods3.get_data(io.BytesIO(response.content))
 
@@ -81,7 +81,7 @@ def get_store_list(session):
 
     if not response.ok:
         print('Error: Failed to get your stores - please try again')
-        sys.exit(1)
+        end_script()
 
     stores = response.json()
     stores_managed = [store for store in stores if 'isManaging' in store and store['isManaging']]
@@ -148,9 +148,17 @@ def check_cert(session, header, cert_list, store_list):
 
     print('Keep in mind, this checks Penny and Rewe stores you manage only')
 
+def end_script():
+    """Function to end the script"""
+    input("\nPress Enter to exit...")
+    sys.exit(1)
+
 def main():
     """Main function"""
-    args = get_args()
+    try:
+        args = get_args()
+    except SystemExit:
+        end_script()
 
     session = login(args.email, args.login_password)
     header, cert_list = get_cert_list(session, args.file_password)
@@ -159,9 +167,10 @@ def main():
     if 0 == len(store_list):
         print('Oh, it looks like you do not manage stores (Penny '
               'or Rewe) which require hygiene certificates.')
-        sys.exit(1)
+        end_script()
 
     check_cert(session, header, cert_list, store_list)
+    end_script()
 
 if __name__ == "__main__":
     main()

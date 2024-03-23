@@ -1,5 +1,6 @@
 .venv/
 *build/
-*dist/
-*.bat
+*.dist/
 *.spec
+*nuitka.bat
+*pyinstaller.bat
