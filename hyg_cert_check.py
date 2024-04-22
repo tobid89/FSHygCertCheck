@@ -6,8 +6,6 @@ import argparse
 import requests
 import pyexcel_ods3
 
-CERT_LIST_COL_IDX_FS_ID = 1
-
 def get_args():
     """Function to initialize argparse"""
     parser = argparse.ArgumentParser(description='Hygiene Certificate Checker')
@@ -107,6 +105,7 @@ def get_active_member(session, store_id):
 
 def check_cert(session, header, cert_list, store_list):
     """Function to check the certificate for all active FS in the handed over store list"""
+    fs_id_colum_index = header.index("FS-ID")
     check_column_title = header[len(header) - 1]
     print(f'Certificates checked for: {check_column_title}\n')
 
@@ -125,7 +124,7 @@ def check_cert(session, header, cert_list, store_list):
             for cert in cert_list:
 
                 #clean fsid in cerificate list from special characters
-                fsid = cert[CERT_LIST_COL_IDX_FS_ID]
+                fsid = cert[fs_id_colum_index]
                 if not isinstance(fsid, int):
                     fsid = ''.join(e for e in fsid if e.isalnum())
                     if fsid != '':
