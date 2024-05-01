@@ -4,3 +4,4 @@
 *.spec
 *nuitka.bat
 *pyinstaller.bat
+launch.json
