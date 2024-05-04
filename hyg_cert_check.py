@@ -6,17 +6,21 @@ import argparse
 import requests
 import pyexcel_ods3
 
+VERSION = '1.2'
+VERSION_HISTORY = """\
+1.2 (04 May 2024)
+- Reworked output of checked store types
+1.1 (01 May 2024)
+- Adjust for release „Laugenbrezel“ (April 2024)
+- Check jumper for valid certificate 
+1.0 (21 Mar 2024)
+- Initial version - broken since release „Laugenbrezel“ (April 2024)\
+"""
+
 TEAM_MEMBER_TYPE_ACTIVE = 1
 TEAM_MEMBER_TYPE_JUMPER = 2
 
-VERSION = '1.1'
-VERSION_HISTORY = """\
-1.1
-- Adjust for release „Laugenbrezel“ (April 2024)
-- Check jumper for valid certificate 
-1.0
-- Initial version - broken since release „Laugenbrezel“ (April 2024)\
-"""
+HYG_CERT_STORE_TYPE_LIST = ['Aldi', 'Penny', 'Rewe']
 
 class VersionHistoryAction(argparse.Action):
     """Class used for the version history"""
@@ -41,11 +45,20 @@ def get_args():
 
     return parser.parse_args()
 
+def hyg_cert_store_types_to_text():
+    """Function to put the store types needing a hygiene certificate to text"""
+    return ", ".join(HYG_CERT_STORE_TYPE_LIST)
 
 def needs_hyg_cert(store):
-    """Function to check if a store is 'penny', 'rewe' or 'aldi' based on the name"""
-    name_lower = store['name'].lower()
-    return 'penny' in name_lower or 'rewe' in name_lower or 'aldi' in name_lower
+    """Function to check a store if a hygiene certificate is needed"""
+    cert_needed = False
+
+    for hyp_cert_store_type in HYG_CERT_STORE_TYPE_LIST:
+        if hyp_cert_store_type.lower() in store['name'].lower():
+            cert_needed = True
+            break
+
+    return cert_needed
 
 def login(email, password):
     """Function to login to foodsharing api"""
@@ -148,18 +161,26 @@ def check_cert(store_member, cert_list, fs_id_column_index, cert_colum_index):
 
     return store_member['id'], store_member['name'], in_list, cert_valid
 
+def print_found_entries(output):
+    """Function to print the result of the certificate check"""
+    if 0 != len(output):
+        print('  ' + '\n  '.join(output))
+    else:
+        print('  None found')
+
 def check_cert_for_store_list(session, header, cert_list, store_list):
     """Function to check the certificate for all active FS in the handed over store list"""
     fs_id_column_index = header.index("FS-ID")
     cert_colum_index = len(header) - 1
     check_column_title = header[cert_colum_index]
-    print(f'Certificates checked for: {check_column_title}\n')
+    print(f'Certificate check: {check_column_title} for {hyg_cert_store_types_to_text()}\n')
 
     for store in store_list:
         print('----------------------------------')
         print(store['name'])
         print('----------------------------------')
         print('Active FS without valid certificate:')
+        output = []
         members = get_member(session, store['id'], TEAM_MEMBER_TYPE_ACTIVE)
         for store_member_active in members:
             fs_id, name, in_list, cert_valid = check_cert(store_member_active,
@@ -168,11 +189,14 @@ def check_cert_for_store_list(session, header, cert_list, store_list):
                                                           cert_colum_index)
 
             if not in_list:
-                print(f'  {name} ({fs_id}) - not in list')
+                output.append(f'{name} ({fs_id}) - not in list')
             elif not cert_valid:
-                print(f'  {name} ({fs_id}) - old certificate')
+                output.append(f'{name} ({fs_id}) - old certificate')
+
+        print_found_entries(output)
 
         print('\nJumper FS with valid certificate:')
+        output = []
         members = get_member(session, store['id'], TEAM_MEMBER_TYPE_JUMPER)
         for store_member_jumper in members:
             fs_id, name, in_list, cert_valid = check_cert(store_member_jumper,
@@ -180,11 +204,13 @@ def check_cert_for_store_list(session, header, cert_list, store_list):
                                                           fs_id_column_index,
                                                           cert_colum_index)
             if cert_valid:
-                print(f'  {name} ({fs_id}) - valid certificate')
+                output.append(f'{name} ({fs_id}) - valid certificate')
+
+        print_found_entries(output)
 
         print('\n')
 
-    print('Keep in mind, this checks Penny, Rewe & Aldi stores you manage only')
+    print('Keep in mind, this checks stores you manage only')
 
 def end_script():
     """Function to end the script"""
@@ -203,8 +229,8 @@ def main():
     store_list = get_store_list(session, fs_id)
 
     if 0 == len(store_list):
-        print('Oh, it looks like you do not manage stores (Penny '
-              'or Rewe) which require hygiene certificates.')
+        print('Oh, it looks like you do not manage stores '
+              f'({hyg_cert_store_types_to_text()}) which require hygiene certificates.')
         end_script()
 
     check_cert_for_store_list(session, header, cert_list, store_list)
